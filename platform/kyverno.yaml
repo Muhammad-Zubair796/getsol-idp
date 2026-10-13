@@ -9,6 +9,19 @@ spec:
     repoURL: 'https://kyverno.github.io/kyverno/'
     targetRevision: 3.2.6
     chart: kyverno
+    helm:
+      values: |
+        cleanupJobs:
+          admissionReports:
+            enabled: false
+          clusterAdmissionReports:
+            enabled: false
+          clusterEphemeralReports:
+            enabled: false
+          ephemeralReports:
+            enabled: false
+          updateRequests:
+            enabled: false
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: kyverno
