@@ -1,0 +1,22 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-owner-label
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+  - name: check-for-owner-label
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - default
+    validate:
+      message: "GetSol Security Violation: Every Pod must have an 'owner' label!"
+      pattern:
+        metadata:
+          labels:
+            owner: "?*"
