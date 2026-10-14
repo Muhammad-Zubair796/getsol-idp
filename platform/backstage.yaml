@@ -18,28 +18,26 @@ spec:
           nodePorts:
             backend: 30070
         backstage:
-          extraEnvVars:
-            - name: APP_CONFIG_app_baseUrl
-              value: "http://98.81.227.143:30070"
-            - name: APP_CONFIG_backend_baseUrl
-              value: "http://98.81.227.143:30070"
-            - name: APP_CONFIG_backend_cors_origin
-              value: "http://98.81.227.143:30070"
-          appConfig:
-            app:
-              title: GetSol Developer Portal
-              baseUrl: http://98.81.227.143:30070
-            backend:
-              baseUrl: http://98.81.227.143:30070
-              listen:
-                port: 7007
-              csp:
-                connect-src: ["'self'", 'http:', 'https:']
-              cors:
-                origin: http://98.81.227.143:30070
-              database:
-                client: better-sqlite3
-                connection: ':memory:'
+          backstage:
+            appConfig:
+              app:
+                title: GetSol Developer Portal
+                baseUrl: http://98.81.227.143:30070
+              backend:
+                baseUrl: http://98.81.227.143:30070
+                listen:
+                  port: 7007
+                cors:
+                  origin: http://98.81.227.143:30070
+                auth:
+                  dangerouslyDisableDefaultAuthPolicy: true
+                database:
+                  client: better-sqlite3
+                  connection: ':memory:'
+              auth:
+                providers:
+                  guest:
+                    dangerouslyAllowOutsideDevelopment: true
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: backstage
