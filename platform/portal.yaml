@@ -1,0 +1,364 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: portal
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portal-sa
+  namespace: portal
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: portal-s3-manager
+rules:
+  - apiGroups: ["s3.aws.upbound.io"]
+    resources: ["buckets"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: portal-s3-binding
+subjects:
+  - kind: ServiceAccount
+    name: portal-sa
+    namespace: portal
+roleRef:
+  kind: ClusterRole
+  name: portal-s3-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portal-app
+  namespace: portal
+data:
+  server.py: |
+    import http.server
+    import json
+    import os
+    import ssl
+    import urllib.request
+    from urllib.error import HTTPError
+
+    K8S_API = "https://kubernetes.default.svc"
+    TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+    def get_token():
+        if os.path.exists(TOKEN_PATH):
+            with open(TOKEN_PATH, 'r') as f:
+                return f.read().strip()
+        return ""
+
+    def k8s_request(method, path, body=None):
+        url = f"{K8S_API}{path}"
+        headers = {
+            "Authorization": f"Bearer {get_token()}",
+            "Content-Type": "application/json"
+        }
+        data = json.dumps(body).encode('utf-8') if body else None
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        ctx = ssl.create_default_context(cafile=CA_PATH)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        try:
+            with urllib.request.urlopen(req, context=ctx) as res:
+                content = res.read().decode('utf-8')
+                return res.status, json.loads(content) if content else {}
+        except HTTPError as e:
+            content = e.read().decode('utf-8')
+            return e.code, json.loads(content) if content else {"message": str(e)}
+
+    HTML_PAGE = """<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>GetSol Developer Portal</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: #0f172a; color: #f8fafc; padding: 2rem; }
+        .container { max-width: 900px; margin: 0 auto; }
+        header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; border-bottom: 1px solid #334155; padding-bottom: 1.5rem; }
+        .logo { font-size: 1.5rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem; }
+        .badge { background: #1e293b; color: #94a3b8; padding: 0.3rem 0.8rem; border-radius: 9999px; font-size: 0.8rem; border: 1px solid #334155; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #e2e8f0; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        label { display: block; font-size: 0.85rem; font-weight: 500; color: #94a3b8; margin-bottom: 0.4rem; }
+        input, select { width: 100%; background: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 0.7rem; color: #f8fafc; font-size: 0.95rem; }
+        input:focus, select:focus { outline: none; border-color: #38bdf8; }
+        button { background: #0284c7; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #0369a1; }
+        .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: none; }
+        .alert.success { background: #064e3b; color: #6ee7b7; border: 1px solid #059669; }
+        .alert.error { background: #450a0a; color: #fca5a5; border: 1px solid #dc2626; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { text-align: left; padding: 0.75rem 1rem; border-bottom: 1px solid #334155; font-size: 0.9rem; }
+        th { color: #94a3b8; font-weight: 500; }
+        .status-pill { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+        .status-ready { background: #064e3b; color: #6ee7b7; }
+        .status-pending { background: #78350f; color: #fde68a; }
+        .btn-delete { background: #ef4444; color: white; padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 6px; }
+        .btn-delete:hover { background: #dc2626; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <header>
+          <div class="logo">⚡ GetSol Developer Portal</div>
+          <div class="badge">Self-Service Cloud Engine</div>
+        </header>
+
+        <div class="card">
+          <h2>📦 Request AWS S3 Cloud Storage</h2>
+          <div id="alertBox" class="alert"></div>
+          <form id="storageForm">
+            <div class="form-grid">
+              <div>
+                <label>Storage Name (Lowercase, letters/numbers/dashes)</label>
+                <input type="text" id="bucketName" placeholder="e.g. user-media-uploads" required>
+              </div>
+              <div>
+                <label>Owner / Team (Kyverno Guardrail)</label>
+                <input type="text" id="ownerName" placeholder="e.g. android-team" required>
+              </div>
+              <div>
+                <label>AWS Region</label>
+                <select id="region">
+                  <option value="us-east-1">US East (N. Virginia)</option>
+                  <option value="us-west-2">US West (Oregon)</option>
+                  <option value="eu-west-1">EU (Ireland)</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" id="submitBtn">🚀 Provision Storage on AWS</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>🌐 Live Cloud Storage Inventory</h2>
+            <button onclick="loadBuckets()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #334155;">🔄 Refresh</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Bucket Name</th>
+                <th>Owner</th>
+                <th>Region</th>
+                <th>Crossplane Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="bucketTable">
+              <tr><td colspan="5" style="text-align: center; color: #64748b;">Loading cloud resources...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <script>
+        async function loadBuckets() {
+          try {
+            const res = await fetch('/api/buckets');
+            const data = await res.json();
+            const tbody = document.getElementById('bucketTable');
+            tbody.innerHTML = '';
+            if (!data.items || data.items.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#64748b;">No S3 buckets provisioned yet.</td></tr>';
+              return;
+            }
+            data.items.forEach(b => {
+              const name = b.metadata.name;
+              const owner = (b.metadata.labels && b.metadata.labels.owner) ? b.metadata.labels.owner : 'None';
+              const region = (b.spec && b.spec.forProvider && b.spec.forProvider.region) ? b.spec.forProvider.region : 'us-east-1';
+              
+              let isReady = false;
+              let isSynced = false;
+              if (b.status && b.status.conditions) {
+                b.status.conditions.forEach(c => {
+                  if (c.type === 'Ready' && c.status === 'True') isReady = true;
+                  if (c.type === 'Synced' && c.status === 'True') isSynced = true;
+                });
+              }
+
+              const statusHtml = (isReady && isSynced) 
+                ? '<span class="status-pill status-ready">🟢 Ready in AWS</span>' 
+                : '<span class="status-pill status-pending">🟡 Provisioning...</span>';
+
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td><strong>${name}</strong></td>
+                <td>${owner}</td>
+                <td>${region}</td>
+                <td>${statusHtml}</td>
+                <td><button class="btn-delete" onclick="deleteBucket('${name}')">Decommission</button></td>
+              `;
+              tbody.appendChild(tr);
+            });
+          } catch(err) {
+            console.error(err);
+          }
+        }
+
+        async function deleteBucket(name) {
+          if (!confirm(`Are you sure you want to delete AWS bucket: ${name}?`)) return;
+          await fetch(`/api/buckets/${name}`, { method: 'DELETE' });
+          loadBuckets();
+        }
+
+        document.getElementById('storageForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const btn = document.getElementById('submitBtn');
+          const alertBox = document.getElementById('alertBox');
+          btn.disabled = true;
+          btn.innerText = "⏳ Ordering AWS to provision...";
+          alertBox.style.display = 'none';
+
+          const rawName = document.getElementById('bucketName').value.trim().toLowerCase();
+          const uniqueName = `getsol-${rawName}-${Date.now().toString().slice(-4)}`;
+          const owner = document.getElementById('ownerName').value.trim();
+          const region = document.getElementById('region').value;
+
+          try {
+            const res = await fetch('/api/buckets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: uniqueName, owner: owner, region: region })
+            });
+            const data = await res.json();
+            if (res.status === 201 || res.status === 200) {
+              alertBox.className = "alert success";
+              alertBox.innerText = `✅ AWS S3 Bucket "${uniqueName}" provisioned successfully via Crossplane!`;
+              alertBox.style.display = "block";
+              document.getElementById('storageForm').reset();
+              loadBuckets();
+            } else {
+              alertBox.className = "alert error";
+              alertBox.innerText = `❌ Error: ${data.message || JSON.stringify(data)}`;
+              alertBox.style.display = "block";
+            }
+          } catch(err) {
+            alertBox.className = "alert error";
+            alertBox.innerText = `❌ Request failed: ${err.message}`;
+            alertBox.style.display = "block";
+          } finally {
+            btn.disabled = false;
+            btn.innerText = "🚀 Provision Storage on AWS";
+          }
+        });
+
+        loadBuckets();
+        setInterval(loadBuckets, 5000);
+      </script>
+    </body>
+    </html>
+    """
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/" or self.path == "/index.html":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(HTML_PAGE.encode('utf-8'))
+            elif self.path == "/api/buckets":
+                status, data = k8s_request("GET", "/apis/s3.aws.upbound.io/v1beta1/buckets")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_POST(self):
+            if self.path == "/api/buckets":
+                length = int(self.headers.get('content-length', 0))
+                body = json.loads(self.rfile.read(length).decode('utf-8'))
+                
+                manifest = {
+                    "apiVersion": "s3.aws.upbound.io/v1beta1",
+                    "kind": "Bucket",
+                    "metadata": {
+                        "name": body["name"],
+                        "labels": {
+                            "owner": body["owner"]
+                        }
+                    },
+                    "spec": {
+                        "forProvider": {
+                            "region": body["region"]
+                        }
+                    }
+                }
+                status, data = k8s_request("POST", "/apis/s3.aws.upbound.io/v1beta1/buckets", manifest)
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+
+        def do_DELETE(self):
+            if self.path.startswith("/api/buckets/"):
+                bucket_name = self.path.split("/")[-1]
+                status, data = k8s_request("DELETE", f"/apis/s3.aws.upbound.io/v1beta1/buckets/{bucket_name}")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+
+    if __name__ == '__main__':
+        server = http.server.ThreadingHTTPServer(('0.0.0.0', 8080), Handler)
+        print("GetSol Developer Portal running on port 8080...")
+        server.serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: getsol-portal
+  namespace: portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: getsol-portal
+  template:
+    metadata:
+      labels:
+        app: getsol-portal
+    spec:
+      serviceAccountName: portal-sa
+      containers:
+        - name: web
+          image: python:3.11-alpine
+          command: ["python", "/app/server.py"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: code
+              mountPath: /app
+      volumes:
+        - name: code
+          configMap:
+            name: portal-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: getsol-portal
+  namespace: portal
+spec:
+  type: NodePort
+  selector:
+    app: getsol-portal
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080
