@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://backstage.github.io/charts'
+    targetRevision: 2.10.2
+    chart: backstage
+    helm:
+      values: |
+        service:
+          type: NodePort
+          ports:
+            backend: 7007
+          nodePorts:
+            backend: 30070
+        backstage:
+          appConfig:
+            app:
+              title: GetSol Developer Portal
+              baseUrl: http://98.81.227.143:30070
+            backend:
+              baseUrl: http://98.81.227.143:30070
+              cors:
+                origin: http://98.81.227.143:30070
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: backstage
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
