@@ -27,6 +27,9 @@ spec:
                 baseUrl: http://98.81.227.143:30070
                 listen:
                   port: 7007
+                csp:
+                  connect-src: ["'self'", 'http:', 'https:']
+                  upgrade-insecure-requests: false
                 cors:
                   origin: http://98.81.227.143:30070
                 auth:
