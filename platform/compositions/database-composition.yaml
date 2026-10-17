@@ -1,0 +1,88 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xdatabases.aws.getsol.io
+  labels:
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: getsol.io/v1alpha1
+    kind: XDatabase
+  resources:
+    - name: rdsInstance
+      base:
+        apiVersion: rds.aws.upbound.io/v1beta3
+        kind: Instance
+        spec:
+          forProvider:
+            region: us-east-1
+            publiclyAccessible: true
+            skipFinalSnapshot: true
+            storageEncrypted: true
+            storageType: gp2
+            username: getsoladmin
+            passwordSecretRef:
+              key: password
+              name: rds-master-secret
+              namespace: crossplane-system
+          writeConnectionSecretToRef:
+            namespace: default
+            name: rds-conn-secret
+      patches:
+        # Patch the AWS DB instance identifier
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.identifier
+
+        # Dynamically set secret name based on database name
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-conn"
+
+        # Patch storage size
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.storageGB
+          toFieldPath: spec.forProvider.allocatedStorage
+
+        # Patch instance size (e.g. db.t3.micro)
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.instanceClass
+          toFieldPath: spec.forProvider.instanceClass
+
+        # Patch engine (postgres or mysql)
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.engine
+          toFieldPath: spec.forProvider.engine
+
+        # Patch engineVersion if provided
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.engineVersion
+          toFieldPath: spec.forProvider.engineVersion
+
+        # Tag resources with owner team and environment
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.owner
+          toFieldPath: metadata.labels[getsol.io/owner]
+
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.environment
+          toFieldPath: metadata.labels[getsol.io/env]
+
+        # Day-2 Guardrail: Map environment to deletionPolicy
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.environment
+          toFieldPath: spec.deletionPolicy
+          transforms:
+            - type: map
+              map:
+                dev: Delete
+                prod: Orphan
+
+        # Return the AWS RDS endpoint back to the developer status
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.endpoint
+          toFieldPath: status.endpoint

@@ -1,0 +1,14 @@
+apiVersion: getsol.io/v1alpha1
+kind: Database
+metadata:
+  name: ${{ values.name }}
+  namespace: default
+  labels:
+    getsol.io/owner: ${{ values.owner }}
+    getsol.io/env: ${{ values.environment }}
+spec:
+  engine: ${{ values.engine }}
+  instanceClass: ${{ values.instanceClass }}
+  storageGB: ${{ values.storageGB }}
+  environment: ${{ values.environment }}
+  owner: ${{ values.owner }}

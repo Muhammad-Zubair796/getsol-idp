@@ -21,16 +21,16 @@ spec:
           appConfig:
             app:
               title: GetSol Developer Portal
-              baseUrl: http://98.81.227.143:30070
+              baseUrl: http://100.53.212.150:30070
             backend:
-              baseUrl: http://98.81.227.143:30070
+              baseUrl: http://100.53.212.150:30070
               listen:
                 port: 7007
               csp:
                 connect-src: ["'self'", 'http:', 'https:']
                 upgrade-insecure-requests: false
               cors:
-                origin: http://98.81.227.143:30070
+                origin: http://100.53.212.150:30070
               auth:
                 dangerouslyDisableDefaultAuthPolicy: true
               database:
@@ -40,6 +40,18 @@ spec:
               providers:
                 guest:
                   dangerouslyAllowOutsideDevelopment: true
+            catalog:
+              rules:
+                - allow: [Component, System, API, Resource, Location, Template, Group, User]
+              locations:
+                - type: url
+                  target: https://raw.githubusercontent.com/Muhammad-Zubair796/getsol-idp/main/catalog-info.yaml
+                  rules:
+                    - allow: [Component, System, Resource]
+                - type: url
+                  target: https://raw.githubusercontent.com/Muhammad-Zubair796/getsol-idp/main/templates/golden-path-service/template.yaml
+                  rules:
+                    - allow: [Template]
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: backstage

@@ -1,0 +1,33 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: limit-team-databases
+  annotations:
+    policies.kyverno.io/title: Limit Databases Per Team
+    policies.kyverno.io/category: Multi-Tenancy & Cost Control
+    policies.kyverno.io/description: >-
+      Restricts any team from provisioning more than 2 AWS database instances 
+      to control AWS infrastructure costs.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: check-database-quota
+      match:
+        any:
+          - resources:
+              kinds:
+                - getsol.io/v1alpha1/Database
+      context:
+        - name: currentCount
+          apiCall:
+            urlPath: "/apis/getsol.io/v1alpha1/namespaces/default/databases"
+            jmesPath: "items[?metadata.labels.\"getsol.io/owner\" == '{{ request.object.metadata.labels.\"getsol.io/owner\" }}'] | length(@)"
+      validate:
+        message: "Cost Control Policy: Team '{{ request.object.metadata.labels.\"getsol.io/owner\" }}' has already reached the maximum limit of 2 databases."
+        deny:
+          conditions:
+            all:
+              - key: "{{ currentCount }}"
+                operator: GreaterThanOrEquals
+                value: 2

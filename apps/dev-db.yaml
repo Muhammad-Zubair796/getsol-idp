@@ -1,0 +1,15 @@
+apiVersion: getsol.io/v1alpha1
+kind: Database
+metadata:
+  name: getsol-test-db
+  namespace: default
+  labels:
+    getsol.io/owner: team-backend
+    getsol.io/env: dev
+spec:
+  engine: postgres
+  engineVersion: "16"
+  instanceClass: db.t3.micro
+  storageGB: 20
+  environment: dev
+  owner: team-backend

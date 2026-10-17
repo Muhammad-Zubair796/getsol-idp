@@ -1,0 +1,86 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: getsol-database-template
+  title: AWS RDS Database (PostgreSQL / MySQL)
+  description: Self-service provision a production-ready AWS RDS instance via Crossplane GitOps
+  tags:
+    - aws
+    - rds
+    - database
+    - getsol-v2
+spec:
+  owner: platform-team
+  type: service
+
+  parameters:
+    - title: Database Details
+      required:
+        - name
+        - engine
+        - instanceClass
+        - storageGB
+        - environment
+        - owner
+      properties:
+        name:
+          title: Database Service Name
+          type: string
+          description: Unique name for your database (lowercase, e.g., payments-db)
+        engine:
+          title: Database Engine
+          type: string
+          default: postgres
+          enum:
+            - postgres
+            - mysql
+        instanceClass:
+          title: Instance Class (Cost tier)
+          type: string
+          default: db.t3.micro
+          enum:
+            - db.t3.micro
+            - db.t3.small
+            - db.t3.medium
+          description: "db.t3.micro (~5/mo) | db.t3.small (~0/mo) | db.t3.medium (~0/mo)"
+        storageGB:
+          title: Storage (GB)
+          type: integer
+          default: 20
+          minimum: 20
+          maximum: 100
+        environment:
+          title: Environment
+          type: string
+          default: dev
+          enum:
+            - dev
+            - prod
+          description: "dev: auto-destroys on deletion | prod: deletion protected (orphaned)"
+        owner:
+          title: Owner / Team
+          type: string
+          description: "Your team name (e.g., team-frontend, team-backend) - checked by Kyverno"
+
+  steps:
+    - id: template
+      name: Generating GitOps Claim
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          engine: ${{ parameters.engine }}
+          instanceClass: ${{ parameters.instanceClass }}
+          storageGB: ${{ parameters.storageGB }}
+          environment: ${{ parameters.environment }}
+          owner: ${{ parameters.owner }}
+
+    - id: publish
+      name: Publishing to GitOps Repository
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        description: 'Provisioning ${{ parameters.name }} via GetSol V2'
+        repoUrl: 'github.com?owner=Muhammad-Zubair796&repo=getsol-idp'
+        targetPath: 'apps/${{ parameters.name }}-db.yaml'

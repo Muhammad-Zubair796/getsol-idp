@@ -1,0 +1,61 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xdatabases.getsol.io
+spec:
+  group: getsol.io
+  names:
+    kind: XDatabase
+    plural: xdatabases
+  claimNames:
+    kind: Database
+    plural: databases
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - engine
+                - storageGB
+                - instanceClass
+                - environment
+                - owner
+              properties:
+                engine:
+                  type: string
+                  description: "Database engine (postgres or mysql)"
+                  enum: ["postgres", "mysql"]
+                engineVersion:
+                  type: string
+                  description: "Database version (e.g. 15.4 for postgres, 8.0 for mysql)"
+                storageGB:
+                  type: integer
+                  description: "Allocated storage in Gigabytes"
+                  minimum: 20
+                  maximum: 100
+                instanceClass:
+                  type: string
+                  description: "RDS instance class (e.g. db.t3.micro, db.t3.small)"
+                  enum: ["db.t3.micro", "db.t3.small", "db.t3.medium"]
+                environment:
+                  type: string
+                  description: "dev or prod - sets deletion and backup policy"
+                  enum: ["dev", "prod"]
+                owner:
+                  type: string
+                  description: "Team or engineer owning this resource (enforced by Kyverno)"
+            status:
+              type: object
+              properties:
+                endpoint:
+                  type: string
+                  description: "Connection endpoint of the provisioned database"
+                ready:
+                  type: boolean
+                  description: "Database readiness state"

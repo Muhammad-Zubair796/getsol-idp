@@ -1,0 +1,40 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: getsol-backend-service
+  title: GetSol Backend Microservice
+  description: Core backend service running on Kubernetes, connected to AWS RDS
+  labels:
+    getsol.io/tier: backend
+  annotations:
+    backstage.io/managed-by-location: url:https://github.com/Muhammad-Zubair796/getsol-idp/blob/main/catalog-info.yaml
+    argocd/app-name: getsol-workloads
+spec:
+  type: service
+  lifecycle: production
+  owner: team-backend
+  system: getsol-platform
+  dependsOn:
+    - resource:default/getsol-postgres-database
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: getsol-postgres-database
+  title: Production PostgreSQL 16 Database
+  description: AWS RDS PostgreSQL instance provisioned via Crossplane GitOps
+  labels:
+    aws.amazon.com/rds: postgres
+spec:
+  type: database
+  owner: team-backend
+  system: getsol-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: getsol-platform
+  title: GetSol Platform System
+  description: The core GitOps Internal Developer Platform
+spec:
+  owner: team-backend
