@@ -1,0 +1,45 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xvirtualmachines.getsol.io
+spec:
+  group: getsol.io
+  names:
+    kind: XVirtualMachine
+    plural: xvirtualmachines
+  claimNames:
+    kind: VirtualMachine
+    plural: virtualmachines
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - instanceType
+                - environment
+                - owner
+              properties:
+                instanceType:
+                  type: string
+                  description: "EC2 instance size"
+                  enum: ["t3.micro", "t3.small", "t3.medium"]
+                environment:
+                  type: string
+                  description: "dev or prod - sets deletion protection"
+                  enum: ["dev", "prod"]
+                owner:
+                  type: string
+                  description: "Team owning this VM (enforced by Kyverno)"
+            status:
+              type: object
+              properties:
+                publicIp:
+                  type: string
+                state:
+                  type: string

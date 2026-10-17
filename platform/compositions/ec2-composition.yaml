@@ -1,0 +1,52 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xvirtualmachines.aws.getsol.io
+  labels:
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: getsol.io/v1alpha1
+    kind: XVirtualMachine
+  resources:
+    - name: ec2Instance
+      base:
+        apiVersion: ec2.aws.upbound.io/v1beta1
+        kind: Instance
+        spec:
+          forProvider:
+            region: us-east-1
+            # Standard Ubuntu 22.04 LTS AMI in us-east-1
+            ami: ami-04b70fa74e45c3917
+            instanceType: t3.micro
+      patches:
+        # Patch the instance type (e.g. t3.micro, t3.small)
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.instanceType
+          toFieldPath: spec.forProvider.instanceType
+
+        # Tag resources with owner team and environment
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.owner
+          toFieldPath: metadata.labels[getsol.io/owner]
+
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.environment
+          toFieldPath: metadata.labels[getsol.io/env]
+
+        # Day-2 Guardrail: Map environment to deletionPolicy
+        # dev -> Delete (cost savings)
+        # prod -> Orphan (prevents accidental deletion)
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.environment
+          toFieldPath: spec.deletionPolicy
+          transforms:
+            - type: map
+              map:
+                dev: Delete
+                prod: Orphan
+
+        # Return the public IP back to the developer status
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.publicIp
+          toFieldPath: status.publicIp
