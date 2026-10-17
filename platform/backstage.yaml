@@ -31,6 +31,10 @@ spec:
                 upgrade-insecure-requests: false
               cors:
                 origin: http://100.53.212.150:30070
+              reading:
+                allow:
+                  - host: raw.githubusercontent.com
+                  - host: github.com
               auth:
                 dangerouslyDisableDefaultAuthPolicy: true
               database:
