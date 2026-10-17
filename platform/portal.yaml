@@ -12,23 +12,26 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: portal-s3-manager
+  name: portal-manager
 rules:
   - apiGroups: ["s3.aws.upbound.io"]
     resources: ["buckets"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["getsol.io"]
+    resources: ["databases", "virtualmachines"]
     verbs: ["get", "list", "watch", "create", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: portal-s3-binding
+  name: portal-binding
 subjects:
   - kind: ServiceAccount
     name: portal-sa
     namespace: portal
 roleRef:
   kind: ClusterRole
-  name: portal-s3-manager
+  name: portal-manager
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: v1
@@ -72,25 +75,34 @@ data:
                 return res.status, json.loads(content) if content else {}
         except HTTPError as e:
             content = e.read().decode('utf-8')
-            return e.code, json.loads(content) if content else {"message": str(e)}
+            try:
+                err_data = json.loads(content)
+            except:
+                err_data = {"message": content or str(e)}
+            return e.code, err_data
 
     HTML_PAGE = """<!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
-      <title>GetSol Developer Portal</title>
+      <title>GetSol V2 Developer Portal</title>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
         body { background: #0f172a; color: #f8fafc; padding: 2rem; }
-        .container { max-width: 900px; margin: 0 auto; }
+        .container { max-width: 1000px; margin: 0 auto; }
         header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; border-bottom: 1px solid #334155; padding-bottom: 1.5rem; }
-        .logo { font-size: 1.5rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem; }
-        .badge { background: #1e293b; color: #94a3b8; padding: 0.3rem 0.8rem; border-radius: 9999px; font-size: 0.8rem; border: 1px solid #334155; }
+        .logo { font-size: 1.6rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem; }
+        .badge { background: #1e293b; color: #38bdf8; padding: 0.4rem 0.9rem; border-radius: 9999px; font-size: 0.85rem; border: 1px solid #38bdf8; font-weight: 600; }
+        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid #334155; padding-bottom: 0.5rem; }
+        .tab-btn { background: transparent; border: none; color: #94a3b8; font-size: 1rem; font-weight: 600; padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        .tab-btn.active { background: #0284c7; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
         h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #e2e8f0; }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
         label { display: block; font-size: 0.85rem; font-weight: 500; color: #94a3b8; margin-bottom: 0.4rem; }
         input, select { width: 100%; background: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 0.7rem; color: #f8fafc; font-size: 0.95rem; }
         input:focus, select:focus { outline: none; border-color: #38bdf8; }
@@ -112,59 +124,373 @@ data:
     <body>
       <div class="container">
         <header>
-          <div class="logo">⚡ GetSol Developer Portal</div>
-          <div class="badge">Self-Service Cloud Engine</div>
+          <div class="logo">⚡ GetSol V2 Developer Portal</div>
+          <div class="badge">Enterprise GitOps Engine</div>
         </header>
 
-        <div class="card">
-          <h2>📦 Request AWS S3 Cloud Storage</h2>
-          <div id="alertBox" class="alert"></div>
-          <form id="storageForm">
-            <div class="form-grid">
-              <div>
-                <label>Storage Name (Lowercase, letters/numbers/dashes)</label>
-                <input type="text" id="bucketName" placeholder="e.g. user-media-uploads" required>
-              </div>
-              <div>
-                <label>Owner / Team (Kyverno Guardrail)</label>
-                <input type="text" id="ownerName" placeholder="e.g. android-team" required>
-              </div>
-              <div>
-                <label>AWS Region</label>
-                <select id="region">
-                  <option value="us-east-1">US East (N. Virginia)</option>
-                  <option value="us-west-2">US West (Oregon)</option>
-                  <option value="eu-west-1">EU (Ireland)</option>
-                </select>
-              </div>
-            </div>
-            <button type="submit" id="submitBtn">🚀 Provision Storage on AWS</button>
-          </form>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTab(event, 'dbTab')">🗄️ AWS RDS Databases</button>
+          <button class="tab-btn" onclick="switchTab(event, 'vmTab')">💻 AWS EC2 Virtual Machines</button>
+          <button class="tab-btn" onclick="switchTab(event, 's3Tab')">📦 AWS S3 Storage</button>
         </div>
 
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2>🌐 Live Cloud Storage Inventory</h2>
-            <button onclick="loadBuckets()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #334155;">🔄 Refresh</button>
+        <!-- ================= DATABASE TAB ================= -->
+        <div id="dbTab" class="tab-content active">
+          <div class="card">
+            <h2>🗄️ Provision AWS Relational Database (RDS)</h2>
+            <div id="dbAlert" class="alert"></div>
+            <form id="dbForm">
+              <div class="form-grid">
+                <div>
+                  <label>Database Service Name</label>
+                  <input type="text" id="dbName" placeholder="e.g. orders-db" required>
+                </div>
+                <div>
+                  <label>Owner / Team (Kyverno Quota Enforced)</label>
+                  <input type="text" id="dbOwner" placeholder="e.g. team-backend" required>
+                </div>
+                <div>
+                  <label>Engine</label>
+                  <select id="dbEngine">
+                    <option value="postgres">PostgreSQL 16</option>
+                    <option value="mysql">MySQL 8.0</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Instance Tier (FinOps Cost)</label>
+                  <select id="dbClass">
+                    <option value="db.t3.micro">db.t3.micro (~$15/mo)</option>
+                    <option value="db.t3.small">db.t3.small (~$30/mo)</option>
+                    <option value="db.t3.medium">db.t3.medium (~$60/mo)</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Environment (Day-2 Guardrail)</label>
+                  <select id="dbEnv">
+                    <option value="dev">dev (auto-destroys on delete)</option>
+                    <option value="prod">prod (deletion-protected / orphaned)</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" id="dbSubmitBtn">🚀 Provision Database on AWS</button>
+            </form>
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Bucket Name</th>
-                <th>Owner</th>
-                <th>Region</th>
-                <th>Crossplane Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="bucketTable">
-              <tr><td colspan="5" style="text-align: center; color: #64748b;">Loading cloud resources...</td></tr>
-            </tbody>
-          </table>
+
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2>🌐 Live AWS RDS Database Inventory</h2>
+              <button onclick="loadDatabases()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #334155;">🔄 Refresh</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Database Name</th>
+                  <th>Owner</th>
+                  <th>Engine</th>
+                  <th>Class</th>
+                  <th>Connection Endpoint</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="dbTable">
+                <tr><td colspan="7" style="text-align: center; color: #64748b;">Loading databases...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        <!-- ================= EC2 VM TAB ================= -->
+        <div id="vmTab" class="tab-content">
+          <div class="card">
+            <h2>💻 Provision AWS EC2 Virtual Machine</h2>
+            <div id="vmAlert" class="alert"></div>
+            <form id="vmForm">
+              <div class="form-grid">
+                <div>
+                  <label>VM Instance Name</label>
+                  <input type="text" id="vmName" placeholder="e.g. worker-node" required>
+                </div>
+                <div>
+                  <label>Owner / Team</label>
+                  <input type="text" id="vmOwner" placeholder="e.g. team-backend" required>
+                </div>
+                <div>
+                  <label>Instance Type</label>
+                  <select id="vmType">
+                    <option value="t3.micro">t3.micro (1 vCPU, 1GB RAM)</option>
+                    <option value="t3.small">t3.small (2 vCPU, 2GB RAM)</option>
+                    <option value="t3.medium">t3.medium (2 vCPU, 4GB RAM)</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Environment</label>
+                  <select id="vmEnv">
+                    <option value="dev">dev</option>
+                    <option value="prod">prod</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" id="vmSubmitBtn">🚀 Provision VM on AWS</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2>🌐 Live AWS EC2 Instance Inventory</h2>
+              <button onclick="loadVMs()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #334155;">🔄 Refresh</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>VM Name</th>
+                  <th>Owner</th>
+                  <th>Instance Type</th>
+                  <th>Public IP</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="vmTable">
+                <tr><td colspan="6" style="text-align: center; color: #64748b;">Loading VMs...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ================= S3 STORAGE TAB ================= -->
+        <div id="s3Tab" class="tab-content">
+          <div class="card">
+            <h2>📦 Provision AWS S3 Cloud Storage</h2>
+            <div id="s3Alert" class="alert"></div>
+            <form id="storageForm">
+              <div class="form-grid">
+                <div>
+                  <label>Storage Name</label>
+                  <input type="text" id="bucketName" placeholder="e.g. media-uploads" required>
+                </div>
+                <div>
+                  <label>Owner / Team</label>
+                  <input type="text" id="ownerName" placeholder="e.g. team-frontend" required>
+                </div>
+                <div>
+                  <label>AWS Region</label>
+                  <select id="region">
+                    <option value="us-east-1">US East (N. Virginia)</option>
+                    <option value="us-west-2">US West (Oregon)</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" id="s3SubmitBtn">🚀 Provision Storage on AWS</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2>🌐 Live S3 Bucket Inventory</h2>
+              <button onclick="loadBuckets()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #334155;">🔄 Refresh</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Bucket Name</th>
+                  <th>Owner</th>
+                  <th>Region</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="bucketTable">
+                <tr><td colspan="5" style="text-align: center; color: #64748b;">Loading buckets...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
 
       <script>
+        function switchTab(e, tabId) {
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.getElementById(tabId).classList.add('active');
+          e.target.classList.add('active');
+          if (tabId === 'dbTab') loadDatabases();
+          if (tabId === 'vmTab') loadVMs();
+          if (tabId === 's3Tab') loadBuckets();
+        }
+
+        // ================= DATABASE LOGIC =================
+        async function loadDatabases() {
+          try {
+            const res = await fetch('/api/databases');
+            const data = await res.json();
+            const tbody = document.getElementById('dbTable');
+            tbody.innerHTML = '';
+            if (!data.items || data.items.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b;">No databases provisioned yet.</td></tr>';
+              return;
+            }
+            data.items.forEach(d => {
+              const name = d.metadata.name;
+              const owner = (d.metadata.labels && d.metadata.labels['getsol.io/owner']) || (d.spec && d.spec.owner) || 'None';
+              const engine = (d.spec && d.spec.engine) || 'postgres';
+              const instanceClass = (d.spec && d.spec.instanceClass) || 'db.t3.micro';
+              const endpoint = (d.status && d.status.endpoint) ? d.status.endpoint : '<span style="color:#64748b;">Generating endpoint...</span>';
+              let isReady = false;
+              if (d.status && d.status.conditions) {
+                d.status.conditions.forEach(c => { if (c.type === 'Ready' && c.status === 'True') isReady = true; });
+              }
+              const statusHtml = isReady 
+                ? '<span class="status-pill status-ready">🟢 Ready in AWS</span>' 
+                : '<span class="status-pill status-pending">🟡 Provisioning...</span>';
+              
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td><strong>${name}</strong></td>
+                <td>${owner}</td>
+                <td>${engine}</td>
+                <td>${instanceClass}</td>
+                <td><small>${endpoint}</small></td>
+                <td>${statusHtml}</td>
+                <td><button class="btn-delete" onclick="deleteDatabase('${name}')">Decommission</button></td>
+              `;
+              tbody.appendChild(tr);
+            });
+          } catch(err) { console.error(err); }
+        }
+
+        async function deleteDatabase(name) {
+          if (!confirm(`Are you sure you want to decommission database: ${name}?`)) return;
+          await fetch(`/api/databases/${name}`, { method: 'DELETE' });
+          loadDatabases();
+        }
+
+        document.getElementById('dbForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const btn = document.getElementById('dbSubmitBtn');
+          const alertBox = document.getElementById('dbAlert');
+          btn.disabled = true;
+          btn.innerText = "⏳ Ordering Crossplane to provision...";
+          alertBox.style.display = 'none';
+
+          const name = document.getElementById('dbName').value.trim().toLowerCase();
+          const owner = document.getElementById('dbOwner').value.trim();
+          const engine = document.getElementById('dbEngine').value;
+          const instanceClass = document.getElementById('dbClass').value;
+          const environment = document.getElementById('dbEnv').value;
+
+          try {
+            const res = await fetch('/api/databases', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, owner, engine, instanceClass, environment })
+            });
+            const data = await res.json();
+            if (res.status === 201 || res.status === 200) {
+              alertBox.className = "alert success";
+              alertBox.innerText = `✅ AWS RDS Database "${name}" provisioned successfully via Crossplane XRD!`;
+              alertBox.style.display = "block";
+              document.getElementById('dbForm').reset();
+              loadDatabases();
+            } else {
+              alertBox.className = "alert error";
+              alertBox.innerText = `❌ ${data.message || JSON.stringify(data)}`;
+              alertBox.style.display = "block";
+            }
+          } catch(err) {
+            alertBox.className = "alert error";
+            alertBox.innerText = `❌ Request failed: ${err.message}`;
+            alertBox.style.display = "block";
+          } finally {
+            btn.disabled = false;
+            btn.innerText = "🚀 Provision Database on AWS";
+          }
+        });
+
+        // ================= VM LOGIC =================
+        async function loadVMs() {
+          try {
+            const res = await fetch('/api/vms');
+            const data = await res.json();
+            const tbody = document.getElementById('vmTable');
+            tbody.innerHTML = '';
+            if (!data.items || data.items.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b;">No Virtual Machines provisioned yet.</td></tr>';
+              return;
+            }
+            data.items.forEach(v => {
+              const name = v.metadata.name;
+              const owner = (v.metadata.labels && v.metadata.labels['getsol.io/owner']) || (v.spec && v.spec.owner) || 'None';
+              const instanceType = (v.spec && v.spec.instanceType) || 't3.micro';
+              const ip = (v.status && v.status.publicIp) ? v.status.publicIp : 'Allocating...';
+              let isReady = false;
+              if (v.status && v.status.conditions) {
+                v.status.conditions.forEach(c => { if (c.type === 'Ready' && c.status === 'True') isReady = true; });
+              }
+              const statusHtml = isReady ? '<span class="status-pill status-ready">🟢 Running</span>' : '<span class="status-pill status-pending">🟡 Creating...</span>';
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td><strong>${name}</strong></td>
+                <td>${owner}</td>
+                <td>${instanceType}</td>
+                <td>${ip}</td>
+                <td>${statusHtml}</td>
+                <td><button class="btn-delete" onclick="deleteVM('${name}')">Decommission</button></td>
+              `;
+              tbody.appendChild(tr);
+            });
+          } catch(err) { console.error(err); }
+        }
+
+        async function deleteVM(name) {
+          if (!confirm(`Are you sure you want to decommission VM: ${name}?`)) return;
+          await fetch(`/api/vms/${name}`, { method: 'DELETE' });
+          loadVMs();
+        }
+
+        document.getElementById('vmForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const btn = document.getElementById('vmSubmitBtn');
+          const alertBox = document.getElementById('vmAlert');
+          btn.disabled = true;
+          btn.innerText = "⏳ Ordering EC2 instance...";
+          alertBox.style.display = 'none';
+
+          const name = document.getElementById('vmName').value.trim().toLowerCase();
+          const owner = document.getElementById('vmOwner').value.trim();
+          const instanceType = document.getElementById('vmType').value;
+          const environment = document.getElementById('vmEnv').value;
+
+          try {
+            const res = await fetch('/api/vms', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, owner, instanceType, environment })
+            });
+            const data = await res.json();
+            if (res.status === 201 || res.status === 200) {
+              alertBox.className = "alert success";
+              alertBox.innerText = `✅ AWS EC2 VM "${name}" provisioned successfully!`;
+              alertBox.style.display = "block";
+              document.getElementById('vmForm').reset();
+              loadVMs();
+            } else {
+              alertBox.className = "alert error";
+              alertBox.innerText = `❌ ${data.message || JSON.stringify(data)}`;
+              alertBox.style.display = "block";
+            }
+          } catch(err) {
+            alertBox.className = "alert error";
+            alertBox.innerText = `❌ ${err.message}`;
+            alertBox.style.display = "block";
+          } finally {
+            btn.disabled = false;
+            btn.innerText = "🚀 Provision VM on AWS";
+          }
+        });
+
+        // ================= S3 LOGIC =================
         async function loadBuckets() {
           try {
             const res = await fetch('/api/buckets');
@@ -179,20 +505,11 @@ data:
               const name = b.metadata.name;
               const owner = (b.metadata.labels && b.metadata.labels.owner) ? b.metadata.labels.owner : 'None';
               const region = (b.spec && b.spec.forProvider && b.spec.forProvider.region) ? b.spec.forProvider.region : 'us-east-1';
-              
               let isReady = false;
-              let isSynced = false;
               if (b.status && b.status.conditions) {
-                b.status.conditions.forEach(c => {
-                  if (c.type === 'Ready' && c.status === 'True') isReady = true;
-                  if (c.type === 'Synced' && c.status === 'True') isSynced = true;
-                });
+                b.status.conditions.forEach(c => { if (c.type === 'Ready' && c.status === 'True') isReady = true; });
               }
-
-              const statusHtml = (isReady && isSynced) 
-                ? '<span class="status-pill status-ready">🟢 Ready in AWS</span>' 
-                : '<span class="status-pill status-pending">🟡 Provisioning...</span>';
-
+              const statusHtml = isReady ? '<span class="status-pill status-ready">🟢 Ready in AWS</span>' : '<span class="status-pill status-pending">🟡 Provisioning...</span>';
               const tr = document.createElement('tr');
               tr.innerHTML = `
                 <td><strong>${name}</strong></td>
@@ -203,23 +520,20 @@ data:
               `;
               tbody.appendChild(tr);
             });
-          } catch(err) {
-            console.error(err);
-          }
+          } catch(err) { console.error(err); }
         }
 
         async function deleteBucket(name) {
-          if (!confirm(`Are you sure you want to delete AWS bucket: ${name}?`)) return;
+          if (!confirm(`Are you sure you want to delete bucket: ${name}?`)) return;
           await fetch(`/api/buckets/${name}`, { method: 'DELETE' });
           loadBuckets();
         }
 
         document.getElementById('storageForm').addEventListener('submit', async (e) => {
           e.preventDefault();
-          const btn = document.getElementById('submitBtn');
-          const alertBox = document.getElementById('alertBox');
+          const btn = document.getElementById('s3SubmitBtn');
+          const alertBox = document.getElementById('s3Alert');
           btn.disabled = true;
-          btn.innerText = "⏳ Ordering AWS to provision...";
           alertBox.style.display = 'none';
 
           const rawName = document.getElementById('bucketName').value.trim().toLowerCase();
@@ -231,32 +545,31 @@ data:
             const res = await fetch('/api/buckets', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: uniqueName, owner: owner, region: region })
+              body: JSON.stringify({ name: uniqueName, owner, region })
             });
             const data = await res.json();
             if (res.status === 201 || res.status === 200) {
               alertBox.className = "alert success";
-              alertBox.innerText = `✅ AWS S3 Bucket "${uniqueName}" provisioned successfully via Crossplane!`;
+              alertBox.innerText = `✅ AWS S3 Bucket "${uniqueName}" provisioned!`;
               alertBox.style.display = "block";
               document.getElementById('storageForm').reset();
               loadBuckets();
             } else {
               alertBox.className = "alert error";
-              alertBox.innerText = `❌ Error: ${data.message || JSON.stringify(data)}`;
+              alertBox.innerText = `❌ ${data.message || JSON.stringify(data)}`;
               alertBox.style.display = "block";
             }
           } catch(err) {
             alertBox.className = "alert error";
-            alertBox.innerText = `❌ Request failed: ${err.message}`;
+            alertBox.innerText = `❌ ${err.message}`;
             alertBox.style.display = "block";
           } finally {
             btn.disabled = false;
-            btn.innerText = "🚀 Provision Storage on AWS";
           }
         });
 
-        loadBuckets();
-        setInterval(loadBuckets, 5000);
+        loadDatabases();
+        setInterval(loadDatabases, 6000);
       </script>
     </body>
     </html>
@@ -264,12 +577,25 @@ data:
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path == "/" or self.path == "/index.html":
+            clean_path = self.path.split('?')[0]
+            if clean_path in ["", "/", "/index.html"]:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
                 self.end_headers()
                 self.wfile.write(HTML_PAGE.encode('utf-8'))
-            elif self.path == "/api/buckets":
+            elif clean_path == "/api/databases":
+                status, data = k8s_request("GET", "/apis/getsol.io/v1alpha1/namespaces/default/databases")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+            elif clean_path == "/api/vms":
+                status, data = k8s_request("GET", "/apis/getsol.io/v1alpha1/namespaces/default/virtualmachines")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+            elif clean_path == "/api/buckets":
                 status, data = k8s_request("GET", "/apis/s3.aws.upbound.io/v1beta1/buckets")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -280,10 +606,62 @@ data:
                 self.end_headers()
 
         def do_POST(self):
-            if self.path == "/api/buckets":
-                length = int(self.headers.get('content-length', 0))
-                body = json.loads(self.rfile.read(length).decode('utf-8'))
-                
+            clean_path = self.path.split('?')[0]
+            length = int(self.headers.get('content-length', 0))
+            body = json.loads(self.rfile.read(length).decode('utf-8'))
+
+            if clean_path == "/api/databases":
+                manifest = {
+                    "apiVersion": "getsol.io/v1alpha1",
+                    "kind": "Database",
+                    "metadata": {
+                        "name": body["name"],
+                        "namespace": "default",
+                        "labels": {
+                            "getsol.io/owner": body["owner"],
+                            "getsol.io/env": body["environment"]
+                        }
+                    },
+                    "spec": {
+                        "engine": body["engine"],
+                        "engineVersion": "16" if body["engine"] == "postgres" else "8.0",
+                        "instanceClass": body["instanceClass"],
+                        "storageGB": 20,
+                        "environment": body["environment"],
+                        "owner": body["owner"]
+                    }
+                }
+                status, data = k8s_request("POST", "/apis/getsol.io/v1alpha1/namespaces/default/databases", manifest)
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+
+            elif clean_path == "/api/vms":
+                manifest = {
+                    "apiVersion": "getsol.io/v1alpha1",
+                    "kind": "VirtualMachine",
+                    "metadata": {
+                        "name": body["name"],
+                        "namespace": "default",
+                        "labels": {
+                            "getsol.io/owner": body["owner"],
+                            "getsol.io/env": body["environment"]
+                        }
+                    },
+                    "spec": {
+                        "instanceType": body["instanceType"],
+                        "environment": body["environment"],
+                        "owner": body["owner"]
+                    }
+                }
+                status, data = k8s_request("POST", "/apis/getsol.io/v1alpha1/namespaces/default/virtualmachines", manifest)
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+
+            elif clean_path == "/api/buckets":
                 manifest = {
                     "apiVersion": "s3.aws.upbound.io/v1beta1",
                     "kind": "Bucket",
@@ -306,8 +684,23 @@ data:
                 self.wfile.write(json.dumps(data).encode('utf-8'))
 
         def do_DELETE(self):
-            if self.path.startswith("/api/buckets/"):
-                bucket_name = self.path.split("/")[-1]
+            clean_path = self.path.split('?')[0]
+            if clean_path.startswith("/api/databases/"):
+                db_name = clean_path.split("/")[-1]
+                status, data = k8s_request("DELETE", f"/apis/getsol.io/v1alpha1/namespaces/default/databases/{db_name}")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+            elif clean_path.startswith("/api/vms/"):
+                vm_name = clean_path.split("/")[-1]
+                status, data = k8s_request("DELETE", f"/apis/getsol.io/v1alpha1/namespaces/default/virtualmachines/{vm_name}")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+            elif clean_path.startswith("/api/buckets/"):
+                bucket_name = clean_path.split("/")[-1]
                 status, data = k8s_request("DELETE", f"/apis/s3.aws.upbound.io/v1beta1/buckets/{bucket_name}")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -316,7 +709,7 @@ data:
 
     if __name__ == '__main__':
         server = http.server.ThreadingHTTPServer(('0.0.0.0', 8080), Handler)
-        print("GetSol Developer Portal running on port 8080...")
+        print("GetSol V2 Developer Portal running on port 8080...")
         server.serve_forever()
 ---
 apiVersion: apps/v1
