@@ -38,3 +38,13 @@ metadata:
   description: The core GitOps Internal Developer Platform
 spec:
   owner: team-backend
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: team-backend
+  title: Backend Engineering Team
+  description: Core backend development team owning platform microservices and databases
+spec:
+  type: team
+  children: []
