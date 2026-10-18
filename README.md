@@ -150,7 +150,7 @@ Real-time demonstration of Kyverno evaluating team quotas. When `team-backend` a
 ### 3. Spotify Backstage Developer Portal & Dependency Mapping
 The Spotify Backstage software catalog showing the `getsol-backend-service` component and its dependency relationship with the provisioned `Production PostgreSQL 16 Database`.
 
-![Backstage Service Catalog](getsoldevportal.PNG)
+![Backstage Service Catalog](getsolbackstage.PNG)
 
 ### 4. Live AWS Management Console Verification
 Verification showing live cloud infrastructure provisioned in AWS `us-east-1` directly triggered by the platform's control plane.
