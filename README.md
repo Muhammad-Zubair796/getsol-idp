@@ -6,8 +6,11 @@
 [![Kyverno](https://img.shields.io/badge/Kyverno-FinOps_Quotas-1C6DDA?logo=kyverno&logoColor=white)](https://kyverno.io/)
 [![Spotify Backstage](https://img.shields.io/badge/Spotify-Backstage_Catalog-9BF0E1?logo=backstage&logoColor=black)](https://backstage.io/)
 [![AWS](https://img.shields.io/badge/AWS-RDS_|_EC2_|_S3-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
+[![Case Study](https://img.shields.io/badge/Full_Case_Study-mzubair.online-0078D4?logo=googlechrome&logoColor=white)](https://www.mzubair.online/projects/getsol-idp)
 
 An enterprise-grade, GitOps-driven **Internal Developer Platform (IDP)** designed to eliminate developer ticket friction, enforce shift-left security governance, and provide zero-YAML self-service cloud infrastructure provisioning across **AWS RDS (PostgreSQL/MySQL)**, **AWS EC2 Compute**, and **AWS S3 Storage**.
+
+📖 **Read the Full Engineering Case Study:** [mzubair.online/projects/getsol-idp](https://www.mzubair.online/projects/getsol-idp)
 
 ---
 
@@ -63,7 +66,7 @@ The platform establishes an end-to-end, closed-loop GitOps reconciliation engine
        │  │ 🛡️  KYVERNO ADMISSION CONTROLLER (Policy-as-Code)            │  │
        │  │     - Enforces mandatory ownership metadata labels            │  │
        │  │     - Evaluates FinOps Team Quotas (Blocks > 2 DBs per team)  │  │
-       │  │     - Instant admission rejection on quota violations         │  │
+       │  │     - Scoped strictly to CREATE (unblocks controller updates) │  │
        │  └───────────────────────────────┬───────────────────────────────┘  │
        │                                  │ Approved                          │
        │                                  ▼                                  │
@@ -229,7 +232,7 @@ mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $(id -u):$(id -g) ~/.kube/config
 export KUBECONFIG=~/.kube/config
-echo 'export KUBECONFIG=~/.kube/config' &gt;&gt; ~/.bashrc
+echo 'export KUBECONFIG=~/.kube/config' >> ~/.bashrc
 
 # 5. Install Helm package manager
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -255,10 +258,10 @@ cd getsol-idp
 kubectl create namespace crossplane-system
 
 # Inject AWS credentials secret
-cat &lt;&lt;EOF &gt; aws-creds.ini
+cat <<EOF > aws-creds.ini
 [default]
-aws_access_key_id = &lt;YOUR_AWS_ACCESS_KEY_ID&gt;
-aws_secret_access_key = &lt;YOUR_AWS_SECRET_ACCESS_KEY&gt;
+aws_access_key_id = <YOUR_AWS_ACCESS_KEY_ID>
+aws_secret_access_key = <YOUR_AWS_SECRET_ACCESS_KEY>
 EOF
 
 kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-creds.ini
@@ -292,7 +295,7 @@ kubectl apply -f platform/compositions/database-composition.yaml
 kubectl apply -f platform/compositions/ec2-xrd.yaml
 kubectl apply -f platform/compositions/ec2-composition.yaml
 
-# Apply Kyverno FinOps Quota Policy
+# Apply Kyverno FinOps Quota Policy (Scoped strictly to CREATE)
 kubectl apply -f platform/policy-database-quota.yaml
 
 # Deploy GetSol V2 Developer Portal
@@ -314,7 +317,7 @@ kubectl apply -f platform/portal.yaml
 GetSol V2 enforces shift-left security and cost controls before requests ever reach Amazon Web Services.
 
 ### 1. FinOps Database Quota Policy (`limit-team-databases`)
-Protects against runaway AWS cloud costs by restricting teams to a maximum of **2 database instances**:
+Protects against runaway AWS cloud costs by restricting teams to a maximum of **2 database instances**. Notice that rules are strictly scoped to `operations: [CREATE]`, ensuring Crossplane controller `UPDATE` operations are not blocked during active reconciliation:
 
 <pre><code>apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -330,6 +333,8 @@ spec:
           - resources:
               kinds:
                 - getsol.io/v1alpha1/Database
+              operations:
+                - CREATE
       context:
         - name: currentCount
           apiCall:
@@ -391,8 +396,9 @@ When not in active use, the entire platform can be paused without losing state:
 
 ## 👤 Author & Maintainer
 
-**Muhammad Zubair**  
-- **GitHub:** [@Muhammad-Zubair796](https://github.com/Muhammad-Zubair796)  
-- **Project:** GetSol Internal Developer Platform (IDP) V2  
+**Muhammad Zubair**
+- **Portfolio Case Study:** [Building GetSol IDP V2 on mzubair.online](https://www.mzubair.online/projects/getsol-idp)
+- **GitHub:** [@Muhammad-Zubair796](https://github.com/Muhammad-Zubair796)
+- **Project:** GetSol Internal Developer Platform (IDP) V2
 
 *Engineered with precision for modern cloud native developer velocity and enterprise governance.*
